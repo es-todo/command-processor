@@ -1,9 +1,5 @@
 import express from "express";
 import body_parser from "body-parser";
-import {
-  type object_type,
-  parse_object_type,
-} from "schemata/generated/object_type";
 
 const port = 3000;
 const app = express();

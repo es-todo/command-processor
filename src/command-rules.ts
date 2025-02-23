@@ -22,7 +22,8 @@ type object_val<T> = object_type extends { type: T; value: infer v }
 function fetch<T extends object_type["type"]>(
   type: T,
   id: string,
-  sk: (val: object_val<T>) => command_outcome
+  sk: (val: object_val<T>) => command_outcome,
+  fk?: () => command_outcome
 ): command_outcome {
   return {
     type: "fetch",
@@ -30,7 +31,7 @@ function fetch<T extends object_type["type"]>(
       type,
       id,
       sk: (v) => sk(v as any),
-      fk: () => ({ type: "failed", reason: "not found" }),
+      fk: fk ?? (() => ({ type: "failed", reason: "not found" })),
     },
   };
 }
@@ -38,6 +39,7 @@ function fetch<T extends object_type["type"]>(
 type command_outcome =
   | { type: "fetch"; desc: fetch_desc }
   | terminal_command_outcome;
+
 type terminal_command_outcome =
   | { type: "succeeded"; events: event_type[] }
   | { type: "failed"; reason: string };
