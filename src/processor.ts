@@ -4,10 +4,8 @@ import {
   process_command,
   type terminal_command_outcome,
 } from "./command-rules.ts";
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { sleep } from "./sleep.ts";
+import { type event_type } from "schemata/generated/event_type";
 
 async function fetch_event_t(): Promise<number> {
   while (true) {
@@ -99,7 +97,7 @@ async function fail_command(command_uuid: string, reason: string) {
         command_uuid,
         reason,
       });
-      return;
+      return { reprocess: false };
     } catch (error: any) {
       console.error(`could not fail command: ${error}`);
       await sleep(1000);
@@ -107,16 +105,50 @@ async function fail_command(command_uuid: string, reason: string) {
   }
 }
 
+async function succeed_command(
+  command_uuid: string,
+  event_t: number,
+  events: event_type[]
+): Promise<{ reprocess: boolean }> {
+  while (true) {
+    try {
+      const out = await axios.post(
+        `http://event-db:3000/event-apis/succeed-command`,
+        {
+          command_uuid,
+          event_t,
+          events,
+        },
+        {
+          validateStatus: (status) => status === 200 || status === 409,
+        }
+      );
+      switch (out.status) {
+        case 409:
+          return { reprocess: true };
+        case 200:
+          return { reprocess: false };
+        default:
+          throw new Error(`unexpected ${out.status}`);
+      }
+    } catch (error: any) {
+      console.error(`could not succeed command: ${error}`);
+      await sleep(1000);
+    }
+  }
+}
+
 async function register_outcome(
   command: queued_command,
-  outcome: terminal_command_outcome
-) {
+  outcome: terminal_command_outcome,
+  event_t: number
+): Promise<{ reprocess: boolean }> {
   switch (outcome.type) {
     case "failed": {
       return fail_command(command.command_uuid, outcome.reason);
     }
     case "succeeded": {
-      return succeed_command(command.command_uuid, outcome.events);
+      return succeed_command(command.command_uuid, event_t, outcome.events);
     }
     default:
       const invalid: never = outcome;
@@ -148,7 +180,7 @@ class Processor {
     }
   }
 
-  public async process_command(command: queued_command) {
+  public async process_command(command: queued_command): Promise<void> {
     const event_t = this.event_t;
     assert(event_t !== undefined);
     try {
@@ -158,10 +190,12 @@ class Processor {
         value: command.command_data,
       });
       console.log(outcome);
-      await register_outcome(command, outcome);
+      await register_outcome(command, outcome, event_t + 1);
     } catch (error: any) {
       console.error(`error while processing command`);
       console.error(error);
+      await sleep(100);
+      return this.process_command(command);
     }
   }
 }
@@ -171,6 +205,7 @@ const processor = new Processor();
 async function poll_commands() {
   let queue_t = await fetch_queue_t();
   const queue = await fetch_pending_commands();
+  console.log(queue);
   await Promise.all(queue.map((x) => processor.enqueue_command(x)));
   while (true) {
     queue_t += 1;
@@ -184,7 +219,9 @@ export async function start_processing() {
   poll_commands();
   let event_t = await fetch_event_t();
   while (true) {
+    console.log({ event_t });
     await reducers_catchup(event_t);
+    console.log({ reducers_at: event_t });
     await processor.event_handled(event_t);
     event_t += 1;
   }

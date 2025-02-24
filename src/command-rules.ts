@@ -6,6 +6,8 @@ import {
 import { type event_type } from "schemata/generated/event_type";
 import { type object_type } from "schemata/generated/object_type";
 import { parse_object_type } from "schemata/generated/object_type";
+import { sleep } from "./sleep.ts";
+import axios from "axios";
 
 type fetch_func<k> = {
   type: k;
@@ -44,6 +46,14 @@ export type terminal_command_outcome =
   | { type: "succeeded"; events: event_type[] }
   | { type: "failed"; reason: string };
 
+function succeed(events: event_type[]): terminal_command_outcome {
+  return { type: "succeeded", events };
+}
+
+function fail(reason: string): terminal_command_outcome {
+  return { type: "failed", reason };
+}
+
 type dispatch<k extends command_type["type"]> = (
   args: (command_type & { type: k })["value"]
 ) => command_outcome;
@@ -68,20 +78,44 @@ function Command<T extends command_type["type"]>(args: {
 
 const command_rules: command_rules = {
   register: Command({
-    handler: ({ user_id, email, salted_hash }) => ({
-      type: "succeeded",
-      events: [
-        { type: "user_registered", value: { user_id, email, salted_hash } },
-      ],
-    }),
+    handler: ({ user_id, email, salted_hash }) =>
+      fetch(
+        "user",
+        user_id,
+        () => fail("user_id already taken"),
+        () =>
+          fetch(
+            "email",
+            email,
+            () => fail("email already taken"),
+            () =>
+              succeed([
+                {
+                  type: "user_registered",
+                  value: { user_id, email, salted_hash },
+                },
+              ])
+          )
+      ),
   }),
   change_email: Command({
-    handler: () => ({ type: "failed" as const, reason: "not implemented" }),
+    handler: () => fail("not implemented"),
   }),
 };
 
-function fetch_object(type: string, id: string) {
-  throw new Error("fetch not implemented");
+type fetch_result = { found: false } | { found: true; data: any };
+async function fetch_object(type: string, id: string): Promise<fetch_result> {
+  while (true) {
+    try {
+      const result = await axios.get(
+        `http://object-reducer:3000/object-apis/get-object?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`
+      );
+      return result.data as any;
+    } catch (error: any) {
+      console.error(error);
+      await sleep(1000);
+    }
+  }
 }
 
 async function finalize(
@@ -90,8 +124,9 @@ async function finalize(
   switch (out.type) {
     case "fetch": {
       const { type, id, sk, fk } = out.desc;
-      const o = parse_object_type(fetch_object(type, id));
-      if (o.type === type) {
+      const res = await fetch_object(type, id);
+      if (res.found) {
+        const o = parse_object_type({ type, value: res.data });
         return finalize(sk(o.value));
       } else {
         return finalize(fk());
@@ -100,6 +135,9 @@ async function finalize(
     case "succeeded":
     case "failed":
       return out;
+    default:
+      const invalid: never = out;
+      throw invalid;
   }
 }
 
