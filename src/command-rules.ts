@@ -1,10 +1,10 @@
 import {
   type command_type,
   parse_command_type,
-} from "schemata/dist/generated/command_type";
+} from "schemata/generated/command_type";
 
-import { type event_type } from "schemata/dist/generated/event_type";
-import { type object_type } from "schemata/dist/generated/object_type";
+import { type event_type } from "schemata/generated/event_type";
+import { type object_type } from "schemata/generated/object_type";
 import { parse_object_type } from "schemata/generated/object_type";
 
 type fetch_func<k> = {
@@ -40,7 +40,7 @@ type command_outcome =
   | { type: "fetch"; desc: fetch_desc }
   | terminal_command_outcome;
 
-type terminal_command_outcome =
+export type terminal_command_outcome =
   | { type: "succeeded"; events: event_type[] }
   | { type: "failed"; reason: string };
 
@@ -80,21 +80,21 @@ const command_rules: command_rules = {
   }),
 };
 
-const e = parse_command_type({ type: "register" });
-const insp = command_rules[e.type];
-const out = insp(({ handler }) => handler(e.value as any));
+function fetch_object(type: string, id: string) {
+  throw new Error("fetch not implemented");
+}
 
-function fetch_object(type: string, id: string) {}
-
-function f(out: command_outcome): terminal_command_outcome {
+async function finalize(
+  out: command_outcome
+): Promise<terminal_command_outcome> {
   switch (out.type) {
     case "fetch": {
       const { type, id, sk, fk } = out.desc;
       const o = parse_object_type(fetch_object(type, id));
       if (o.type === type) {
-        return f(sk(o.value));
+        return finalize(sk(o.value));
       } else {
-        return f(fk());
+        return finalize(fk());
       }
     }
     case "succeeded":
@@ -103,4 +103,18 @@ function f(out: command_outcome): terminal_command_outcome {
   }
 }
 
-f(out);
+export async function process_command(command: {
+  type: string;
+  value: any;
+}): Promise<terminal_command_outcome> {
+  const c = (() => {
+    try {
+      return parse_command_type(command);
+    } catch (error) {
+      return undefined;
+    }
+  })();
+  if (c === undefined) return { type: "failed", reason: "invalid command" };
+  const insp = command_rules[c.type];
+  return finalize(insp(({ handler }) => handler(c.value as any)));
+}
