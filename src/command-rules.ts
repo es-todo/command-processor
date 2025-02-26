@@ -17,9 +17,7 @@ type fetch_func<k> = {
 };
 
 type fetch_desc = fetch_func<object_type["type"]>;
-type object_val<T> = object_type extends { type: T; value: infer v }
-  ? v
-  : never;
+type object_val<T> = object_type extends { type: T; data: infer v } ? v : never;
 
 function fetch<T extends object_type["type"]>(
   type: T,
@@ -55,7 +53,7 @@ function fail(reason: string): terminal_command_outcome {
 }
 
 type dispatch<k extends command_type["type"]> = (
-  args: (command_type & { type: k })["value"]
+  args: (command_type & { type: k })["data"]
 ) => command_outcome;
 
 type command_rules = {
@@ -92,7 +90,7 @@ const command_rules: command_rules = {
               succeed([
                 {
                   type: "user_registered",
-                  value: { user_id, email, salted_hash },
+                  data: { user_id, email, salted_hash },
                 },
               ])
           )
@@ -126,8 +124,8 @@ async function finalize(
       const { type, id, sk, fk } = out.desc;
       const res = await fetch_object(type, id);
       if (res.found) {
-        const o = parse_object_type({ type, value: res.data });
-        return finalize(sk(o.value));
+        const o = parse_object_type({ type, data: res.data });
+        return finalize(sk(o.data));
       } else {
         return finalize(fk());
       }
@@ -143,7 +141,7 @@ async function finalize(
 
 export async function process_command(command: {
   type: string;
-  value: any;
+  data: any;
 }): Promise<terminal_command_outcome> {
   const c = (() => {
     try {
@@ -154,5 +152,5 @@ export async function process_command(command: {
   })();
   if (c === undefined) return { type: "failed", reason: "invalid command" };
   const insp = command_rules[c.type];
-  return finalize(insp(({ handler }) => handler(c.value as any)));
+  return finalize(insp(({ handler }) => handler(c.data as any)));
 }

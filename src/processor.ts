@@ -187,7 +187,7 @@ class Processor {
       console.log(command);
       const outcome = await process_command({
         type: command.command_type,
-        value: command.command_data,
+        data: command.command_data,
       });
       console.log(outcome);
       await register_outcome(command, outcome, event_t + 1);
