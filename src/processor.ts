@@ -190,7 +190,12 @@ class Processor {
         data: command.command_data,
       });
       console.log(outcome);
-      await register_outcome(command, outcome, event_t + 1);
+      const { reprocess } = await register_outcome(
+        command,
+        outcome,
+        event_t + 1
+      );
+      console.log({ reprocess });
     } catch (error: any) {
       console.error(`error while processing command`);
       console.error(error);
@@ -219,7 +224,7 @@ export async function start_processing() {
   poll_commands();
   let event_t = await fetch_event_t();
   while (true) {
-    console.log({ event_t });
+    console.log({ waiting_for_reducers: event_t });
     await reducers_catchup(event_t);
     console.log({ reducers_at: event_t });
     await processor.event_handled(event_t);
