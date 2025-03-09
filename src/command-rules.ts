@@ -99,6 +99,9 @@ const command_rules: command_rules = {
   change_email: Command({
     handler: () => fail("not implemented"),
   }),
+  ping: Command({
+    handler: ({}) => succeed([{ type: "ping", data: {} }]),
+  }),
 };
 
 type fetch_result = { found: false } | { found: true; data: any };
