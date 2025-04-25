@@ -38,10 +38,10 @@ async function reducers_catchup(event_t: number) {
   }
 }
 
-async function fetch_queue_t(): Promise<number> {
+async function fetch_status_t(): Promise<number> {
   while (true) {
     try {
-      const res = await axios.get("http://event-db:3000/event-apis/queue-t");
+      const res = await axios.get("http://event-db:3000/event-apis/status-t");
       if (typeof res.data === "number") {
         return res.data;
       }
@@ -59,7 +59,7 @@ type queued_command = {
   command_data: any;
   command_date: string;
   scheduled_for: string;
-  queue_t: string;
+  status_t: string;
 };
 
 async function fetch_pending_commands(): Promise<queued_command[]> {
@@ -76,11 +76,11 @@ async function fetch_pending_commands(): Promise<queued_command[]> {
   }
 }
 
-async function poll_command_queue(queue_t: number): Promise<void> {
+async function poll_command_queue(status_t: number): Promise<void> {
   while (true) {
     try {
       await axios.get(
-        `http://event-db:3000/event-apis/poll-command-queue?queue_t=${queue_t}`
+        `http://event-db:3000/event-apis/poll-status?status_t=${status_t}`
       );
       return;
     } catch (error: any) {
@@ -208,13 +208,13 @@ class Processor {
 const processor = new Processor();
 
 async function poll_commands() {
-  let queue_t = await fetch_queue_t();
+  let status_t = await fetch_status_t();
   const queue = await fetch_pending_commands();
   console.log(queue);
   await Promise.all(queue.map((x) => processor.enqueue_command(x)));
   while (true) {
-    queue_t += 1;
-    await poll_command_queue(queue_t);
+    status_t += 1;
+    await poll_command_queue(status_t);
     const queue = await fetch_pending_commands();
     await Promise.all(queue.map((x) => processor.enqueue_command(x)));
   }
