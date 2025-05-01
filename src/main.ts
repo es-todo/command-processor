@@ -1,6 +1,10 @@
 import express from "express";
 import body_parser from "body-parser";
 import { start_processing } from "./processor.ts";
+import { create_verify } from "./verify.ts";
+import { readFileSync } from "node:fs";
+
+const verify = create_verify(readFileSync("public.pem", { encoding: "utf8" }));
 
 const port = 3000;
 const app = express();
