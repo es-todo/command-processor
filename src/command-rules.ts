@@ -76,7 +76,7 @@ function Command<T extends command_type["type"]>(args: {
 
 const command_rules: command_rules = {
   register: Command({
-    handler: ({ user_id, email, salted_hash }) =>
+    handler: ({ user_id, email, password }) =>
       fetch(
         "user",
         user_id,
@@ -90,7 +90,7 @@ const command_rules: command_rules = {
               succeed([
                 {
                   type: "user_registered",
-                  data: { user_id, email, salted_hash },
+                  data: { user_id, email, password },
                 },
               ])
           )
