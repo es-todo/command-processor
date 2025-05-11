@@ -6,6 +6,7 @@ import {
 } from "./command-rules.ts";
 import { sleep } from "./sleep.ts";
 import { type event_type } from "schemata/generated/event_type";
+import { type verify } from "./verify.ts";
 
 async function fetch_event_t(): Promise<number> {
   while (true) {
@@ -58,6 +59,9 @@ type queued_command = {
   command_type: string;
   command_data: any;
   command_date: string;
+  command_auth:
+    | { authenticated: true; user_id: string; signature: string }
+    | { authenticated: false };
   scheduled_for: string;
   status_t: string;
 };
@@ -157,8 +161,13 @@ async function register_outcome(
 }
 
 class Processor {
+  private verify: verify;
   private event_t: number | undefined = undefined;
   private pending_commands: queued_command[] = [];
+
+  constructor(verify: verify) {
+    this.verify = verify;
+  }
   public async event_handled(event_t: number) {
     if (this.event_t === undefined) {
       this.event_t = event_t;
@@ -183,12 +192,22 @@ class Processor {
   public async process_command(command: queued_command): Promise<void> {
     const event_t = this.event_t;
     assert(event_t !== undefined);
+    const auth = command.command_auth;
+    const user_id =
+      auth &&
+      auth.authenticated &&
+      this.verify(`${command.command_uuid}:${auth.user_id}`, auth.signature)
+        ? auth.user_id
+        : undefined;
     try {
       console.log(command);
-      const outcome = await process_command({
-        type: command.command_type,
-        data: command.command_data,
-      });
+      const outcome = await process_command(
+        {
+          type: command.command_type,
+          data: command.command_data,
+        },
+        { user_id }
+      );
       console.log(outcome);
       const { reprocess } = await register_outcome(
         command,
@@ -205,22 +224,20 @@ class Processor {
   }
 }
 
-const processor = new Processor();
-
-async function poll_commands() {
-  let status_t = await fetch_status_t();
-  const queue = await fetch_pending_commands();
-  console.log(queue);
-  await Promise.all(queue.map((x) => processor.enqueue_command(x)));
-  while (true) {
-    status_t += 1;
-    await poll_command_queue(status_t);
+export async function start_processing(verify: verify) {
+  const processor = new Processor(verify);
+  async function poll_commands() {
+    let status_t = await fetch_status_t();
     const queue = await fetch_pending_commands();
+    console.log(queue);
     await Promise.all(queue.map((x) => processor.enqueue_command(x)));
+    while (true) {
+      status_t += 1;
+      await poll_command_queue(status_t);
+      const queue = await fetch_pending_commands();
+      await Promise.all(queue.map((x) => processor.enqueue_command(x)));
+    }
   }
-}
-
-export async function start_processing() {
   poll_commands();
   let event_t = await fetch_event_t();
   while (true) {

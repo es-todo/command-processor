@@ -17,7 +17,8 @@ type fetch_func<k> = {
 };
 
 type fetch_desc = fetch_func<object_type["type"]>;
-type object_val<T> = object_type extends { type: T; data: infer v } ? v : never;
+//type object_val<T> = object_type extends { type: T; data: infer v } ? v : never;
+type object_val<T> = (object_type & { type: T })["data"];
 
 function fetch<T extends object_type["type"]>(
   type: T,
@@ -53,7 +54,8 @@ function fail(reason: string): terminal_command_outcome {
 }
 
 type dispatch<k extends command_type["type"]> = (
-  args: (command_type & { type: k })["data"]
+  args: (command_type & { type: k })["data"],
+  meta: { user_id: string | undefined }
 ) => command_outcome;
 
 type command_rules = {
@@ -102,6 +104,31 @@ const command_rules: command_rules = {
   ping: Command({
     handler: ({}) => succeed([{ type: "ping", data: {} }]),
   }),
+  create_board: Command({
+    handler: ({ board_id, board_name }, { user_id }) =>
+      user_id
+        ? fetch(
+            "board",
+            board_id,
+            () => fail("board already exists"),
+            () =>
+              succeed([
+                {
+                  type: "board_created",
+                  data: { board_id, board_name, user_id },
+                },
+              ])
+          )
+        : fail("auth required"),
+  }),
+  rename_board: Command({
+    handler: ({ board_id, board_name }, { user_id }) =>
+      fetch("board", board_id, (board) =>
+        board.user_id === user_id
+          ? succeed([{ type: "board_renamed", data: { board_id, board_name } }])
+          : fail("not an owner")
+      ),
+  }),
 };
 
 type fetch_result = { found: false } | { found: true; data: any };
@@ -142,10 +169,13 @@ async function finalize(
   }
 }
 
-export async function process_command(command: {
-  type: string;
-  data: any;
-}): Promise<terminal_command_outcome> {
+export async function process_command(
+  command: {
+    type: string;
+    data: any;
+  },
+  meta: { user_id: string | undefined }
+): Promise<terminal_command_outcome> {
   const c = (() => {
     try {
       return parse_command_type(command);
@@ -155,5 +185,5 @@ export async function process_command(command: {
   })();
   if (c === undefined) return { type: "failed", reason: "invalid command" };
   const insp = command_rules[c.type];
-  return finalize(insp(({ handler }) => handler(c.data as any)));
+  return finalize(insp(({ handler }) => handler(c.data as any, meta)));
 }

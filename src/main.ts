@@ -22,4 +22,4 @@ app.listen(port, () => {
   console.log(`command processor listening on port ${port}`);
 });
 
-start_processing();
+start_processing(verify);
