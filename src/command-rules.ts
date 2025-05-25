@@ -101,6 +101,18 @@ const command_rules: command_rules = {
   change_email: Command({
     handler: () => fail("not implemented"),
   }),
+  change_user_name: Command({
+    handler: ({ new_name }, { user_id }) =>
+      user_id
+        ? fetch("user", user_id, ({ name }) =>
+            name === new_name
+              ? fail("name did not change")
+              : succeed([
+                  { type: "user_name_changed", data: { user_id, new_name } },
+                ])
+          )
+        : fail("auth required"),
+  }),
   ping: Command({
     handler: ({}) => succeed([{ type: "ping", data: {} }]),
   }),
