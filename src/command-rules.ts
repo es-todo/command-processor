@@ -78,7 +78,7 @@ function Command<T extends command_type["type"]>(args: {
 
 const command_rules: command_rules = {
   register: Command({
-    handler: ({ user_id, email, password }) =>
+    handler: ({ user_id, email, password, username, realname }) =>
       fetch(
         "user",
         user_id,
@@ -89,30 +89,42 @@ const command_rules: command_rules = {
             email,
             () => fail("email already taken"),
             () =>
-              succeed([
-                {
-                  type: "user_registered",
-                  data: { user_id, email, password },
-                },
-              ])
+              fetch(
+                "username",
+                username,
+                () => fail("username already taken"),
+                () =>
+                  succeed([
+                    {
+                      type: "user_registered",
+                      data: { user_id, username, realname, email, password },
+                    },
+                  ])
+              )
           )
       ),
   }),
   change_email: Command({
     handler: () => fail("not implemented"),
   }),
-  change_user_name: Command({
-    handler: ({ new_name }, { user_id }) =>
-      user_id
-        ? fetch("user", user_id, ({ name }) =>
-            name === new_name
-              ? fail("name did not change")
-              : succeed([
-                  { type: "user_name_changed", data: { user_id, new_name } },
-                ])
-          )
-        : fail("auth required"),
+  change_username: Command({
+    handler: () => fail("not implemented"),
   }),
+  change_realname: Command({
+    handler: () => fail("not implemented"),
+  }),
+  //change_user_name: Command({
+  //  handler: ({ new_name }, { user_id }) =>
+  //    user_id
+  //      ? fetch("user", user_id, ({ name }) =>
+  //          name === new_name
+  //            ? fail("name did not change")
+  //            : succeed([
+  //                { type: "user_name_changed", data: { user_id, new_name } },
+  //              ])
+  //        )
+  //      : fail("auth required"),
+  //}),
   ping: Command({
     handler: ({}) => succeed([{ type: "ping", data: {} }]),
   }),
