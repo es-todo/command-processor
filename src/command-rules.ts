@@ -8,6 +8,7 @@ import { type object_type } from "schemata/generated/object_type";
 import { parse_object_type } from "schemata/generated/object_type";
 import { sleep } from "./sleep.ts";
 import axios from "axios";
+import { difference } from "./set-functions.ts";
 
 type fetch_func<k> = {
   type: k;
@@ -76,6 +77,17 @@ function Command<T extends command_type["type"]>(args: {
   return <R>(inspect: inspector<T, R>) => inspect(args);
 }
 
+function check_role(
+  { user_id }: { user_id: string | undefined },
+  role: "admin",
+  f: () => command_outcome
+): command_outcome {
+  if (!user_id) return fail("unauthorized");
+  return fetch("role_users", role, ({ user_ids }) =>
+    user_ids.includes(user_id) ? f() : fail("unauthorized")
+  );
+}
+
 const command_rules: command_rules = {
   register: Command({
     handler: ({ user_id, email, password, username, realname }) =>
@@ -134,7 +146,29 @@ const command_rules: command_rules = {
           )
       ),
   }),
-  change_user_roles: Command({ handler: () => fail("not implemented") }),
+  change_user_roles: Command({
+    handler: ({ user_id, roles: new_roles }, auth) => {
+      function check(old_roles: string[]): command_outcome {
+        const added_roles = difference(new_roles, old_roles);
+        const removed_roles = difference(old_roles, new_roles);
+        if (added_roles.length === 0 && removed_roles.length === 0) {
+          return fail("no changes");
+        } else {
+          return succeed([
+            { type: "user_roles_changed", data: { user_id, roles: new_roles } },
+          ]);
+        }
+      }
+      return check_role(auth, "admin", () =>
+        fetch(
+          "user_roles",
+          user_id,
+          (user) => check(user.roles),
+          () => check([])
+        )
+      );
+    },
+  }),
   dequeue_email_message: Command({ handler: () => fail("not implemented") }),
   change_email: Command({ handler: () => fail("not implemented") }),
   change_username: Command({ handler: () => fail("not implemented") }),
