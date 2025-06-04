@@ -94,25 +94,51 @@ const command_rules: command_rules = {
                 username,
                 () => fail("username already taken"),
                 () =>
-                  succeed([
-                    {
-                      type: "user_registered",
-                      data: { user_id, username, realname, email, password },
-                    },
-                  ])
+                  fetch(
+                    "role_users",
+                    "admin",
+                    (_existingdata) =>
+                      // normal registration workflow
+                      succeed([
+                        {
+                          type: "user_registered",
+                          data: {
+                            user_id,
+                            username,
+                            realname,
+                            email,
+                            password,
+                          },
+                        },
+                      ]),
+                    () =>
+                      // admin registration workflow
+                      succeed([
+                        {
+                          type: "user_registered",
+                          data: {
+                            user_id,
+                            username,
+                            realname,
+                            email,
+                            password,
+                          },
+                        },
+                        {
+                          type: "user_roles_changed",
+                          data: { user_id, roles: ["admin"] },
+                        },
+                      ])
+                  )
               )
           )
       ),
   }),
-  change_email: Command({
-    handler: () => fail("not implemented"),
-  }),
-  change_username: Command({
-    handler: () => fail("not implemented"),
-  }),
-  change_realname: Command({
-    handler: () => fail("not implemented"),
-  }),
+  change_user_roles: Command({ handler: () => fail("not implemented") }),
+  dequeue_email_message: Command({ handler: () => fail("not implemented") }),
+  change_email: Command({ handler: () => fail("not implemented") }),
+  change_username: Command({ handler: () => fail("not implemented") }),
+  change_realname: Command({ handler: () => fail("not implemented") }),
   //change_user_name: Command({
   //  handler: ({ new_name }, { user_id }) =>
   //    user_id
