@@ -9,6 +9,13 @@ import { parse_object_type } from "schemata/generated/object_type";
 import { sleep } from "./sleep.ts";
 import axios from "axios";
 import { difference } from "./set-functions.ts";
+import { customAlphabet } from "nanoid";
+import { type objects } from "./objects.ts";
+import { v4 as uuidv4 } from "uuid";
+
+const nanoid = customAlphabet("1234567890abcdef", 16);
+const email_host_name = process.env["EMAIL_HOST_NAME"];
+if (!email_host_name) throw new Error("EMAIL_HOST_NAME is undefined");
 
 type fetch_func<k> = {
   type: k;
@@ -79,13 +86,49 @@ function Command<T extends command_type["type"]>(args: {
 
 function check_role(
   { user_id }: { user_id: string | undefined },
-  role: "admin",
+  role: objects["user_roles"]["roles"][0],
   f: () => command_outcome
 ): command_outcome {
   if (!user_id) return fail("unauthorized");
-  return fetch("role_users", role, ({ user_ids }) =>
-    user_ids.includes(user_id) ? f() : fail("unauthorized")
+  return fetch(
+    "role_users",
+    role,
+    ({ user_ids }) => (user_ids.includes(user_id) ? f() : fail("unauthorized")),
+    () => fail("invalid_role")
   );
+}
+
+function welcome_email_events({
+  user_id,
+  email,
+}: {
+  user_id: string;
+  email: string;
+}): event_type[] {
+  const code = nanoid(16);
+  const message_id = uuidv4();
+  return [
+    {
+      type: "email_confirmation_code_generated",
+      data: {
+        user_id,
+        email,
+        code,
+      },
+    },
+    {
+      type: "email_message_enqueued",
+      data: {
+        user_id,
+        email,
+        message_id,
+        content: {
+          type: "welcome_email",
+          code,
+        },
+      },
+    },
+  ];
 }
 
 const command_rules: command_rules = {
@@ -122,6 +165,7 @@ const command_rules: command_rules = {
                             password,
                           },
                         },
+                        ...welcome_email_events({ user_id, email }),
                       ]),
                     () =>
                       // admin registration workflow
@@ -169,7 +213,24 @@ const command_rules: command_rules = {
       );
     },
   }),
-  dequeue_email_message: Command({ handler: () => fail("not implemented") }),
+  receive_email_confirmation_code: Command({
+    handler: () => fail("not implemented"),
+  }),
+  dequeue_email_message: Command({
+    handler: ({ message_id, status }, meta) =>
+      check_role(meta, "automation", () =>
+        fetch("email_message", message_id, ({ status: existing_status }) =>
+          existing_status.type === "queued"
+            ? succeed([
+                {
+                  type: "email_message_dequeued",
+                  data: { message_id, status },
+                },
+              ])
+            : fail(`already_${existing_status.type}`)
+        )
+      ),
+  }),
   change_email: Command({ handler: () => fail("not implemented") }),
   change_username: Command({ handler: () => fail("not implemented") }),
   change_realname: Command({ handler: () => fail("not implemented") }),
