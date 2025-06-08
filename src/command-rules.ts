@@ -214,7 +214,14 @@ const command_rules: command_rules = {
     },
   }),
   receive_email_confirmation_code: Command({
-    handler: () => fail("not implemented"),
+    handler: ({ code }) =>
+      fetch("email_confirmation_code", code, ({ received }) =>
+        received
+          ? fail("already_received")
+          : succeed([
+              { type: "email_confirmation_code_received", data: { code } },
+            ])
+      ),
   }),
   dequeue_email_message: Command({
     handler: ({ message_id, status }, meta) =>
