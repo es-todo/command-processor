@@ -25,7 +25,6 @@ type fetch_func<k> = {
 };
 
 type fetch_desc = fetch_func<object_type["type"]>;
-//type object_val<T> = object_type extends { type: T; data: infer v } ? v : never;
 type object_val<T> = (object_type & { type: T })["data"];
 
 function fetch<T extends object_type["type"]>(
@@ -240,19 +239,21 @@ const command_rules: command_rules = {
   }),
   change_email: Command({ handler: () => fail("not implemented") }),
   change_username: Command({ handler: () => fail("not implemented") }),
-  change_realname: Command({ handler: () => fail("not implemented") }),
-  //change_user_name: Command({
-  //  handler: ({ new_name }, { user_id }) =>
-  //    user_id
-  //      ? fetch("user", user_id, ({ name }) =>
-  //          name === new_name
-  //            ? fail("name did not change")
-  //            : succeed([
-  //                { type: "user_name_changed", data: { user_id, new_name } },
-  //              ])
-  //        )
-  //      : fail("auth required"),
-  //}),
+  change_realname: Command({
+    handler: ({ new_realname }, { user_id }) =>
+      user_id
+        ? fetch("user", user_id, ({ realname }) =>
+            realname === new_realname
+              ? fail("name did not change")
+              : succeed([
+                  {
+                    type: "user_realname_changed",
+                    data: { user_id, new_realname },
+                  },
+                ])
+          )
+        : fail("auth required"),
+  }),
   ping: Command({
     handler: ({}) => succeed([{ type: "ping", data: {} }]),
   }),
@@ -288,7 +289,9 @@ async function fetch_object(type: string, id: string): Promise<fetch_result> {
   while (true) {
     try {
       const result = await axios.get(
-        `http://object-reducer:3000/object-apis/get-object?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`
+        `http://object-reducer:3000/object-apis/get-object?type=${encodeURIComponent(
+          type
+        )}&id=${encodeURIComponent(id)}`
       );
       return result.data as any;
     } catch (error: any) {
