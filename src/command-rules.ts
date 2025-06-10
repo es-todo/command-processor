@@ -130,9 +130,23 @@ function welcome_email_events({
   ];
 }
 
+function username_and_email_error(
+  username: string,
+  email: string
+): command_outcome | undefined {
+  if (username !== username.toLowerCase()) {
+    return fail("invalid_username");
+  }
+  if (email !== email.toLowerCase()) {
+    return fail("invalid_email");
+  }
+  return undefined;
+}
+
 const command_rules: command_rules = {
   register: Command({
     handler: ({ user_id, email, password, username, realname }) =>
+      username_and_email_error(username, email) ||
       fetch(
         "user",
         user_id,
