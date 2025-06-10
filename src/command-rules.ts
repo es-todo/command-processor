@@ -130,15 +130,16 @@ function welcome_email_events({
   ];
 }
 
-function username_and_email_error(
-  username: string,
-  email: string
-): command_outcome | undefined {
-  if (username !== username.toLowerCase()) {
-    return fail("invalid_username");
-  }
+function email_error(email: string): command_outcome | undefined {
   if (email !== email.toLowerCase()) {
     return fail("invalid_email");
+  }
+  return undefined;
+}
+
+function username_error(username: string): command_outcome | undefined {
+  if (username !== username.toLowerCase()) {
+    return fail("invalid_username");
   }
   return undefined;
 }
@@ -162,7 +163,8 @@ function assert_string(x: any): asserts x is string {
 const command_rules: command_rules = {
   register: Command({
     handler: ({ user_id, email, password, username, realname }) =>
-      username_and_email_error(username, email) ||
+      username_error(username) ||
+      email_error(email) ||
       fetch(
         "user",
         user_id,
@@ -268,7 +270,34 @@ const command_rules: command_rules = {
       ),
   }),
   change_email: Command({ handler: () => fail("not implemented") }),
-  change_username: Command({ handler: () => fail("not implemented") }),
+  change_username: Command({
+    handler: ({ new_username, user_id }, meta) => {
+      if (!meta.user_id) return fail("auth_required");
+      user_id = user_id ?? meta.user_id;
+      return check_profile_edit_capability(
+        user_id,
+        meta,
+        () =>
+          username_error(new_username) ||
+          fetch(
+            "username",
+            new_username,
+            () => fail("username taken"),
+            () =>
+              fetch("user", user_id, ({ username }) =>
+                username === new_username
+                  ? fail("username did not change")
+                  : succeed([
+                      {
+                        type: "user_username_changed",
+                        data: { user_id, new_username },
+                      },
+                    ])
+              )
+          )
+      );
+    },
+  }),
   change_realname: Command({
     handler: ({ new_realname, user_id }, meta) => {
       if (!meta.user_id) return fail("auth_required");
