@@ -143,6 +143,22 @@ function username_and_email_error(
   return undefined;
 }
 
+type meta = { user_id: string | undefined };
+
+function check_profile_edit_capability(
+  user_id: string,
+  meta: meta,
+  f: () => command_outcome
+): command_outcome {
+  if (!meta.user_id) return fail("auth_required");
+  if (user_id === meta.user_id) return f();
+  return check_role(meta, "profile-management", f);
+}
+
+function assert_string(x: any): asserts x is string {
+  if (typeof x !== "string") throw new Error("not a string");
+}
+
 const command_rules: command_rules = {
   register: Command({
     handler: ({ user_id, email, password, username, realname }) =>
@@ -254,19 +270,22 @@ const command_rules: command_rules = {
   change_email: Command({ handler: () => fail("not implemented") }),
   change_username: Command({ handler: () => fail("not implemented") }),
   change_realname: Command({
-    handler: ({ new_realname }, { user_id }) =>
-      user_id
-        ? fetch("user", user_id, ({ realname }) =>
-            realname === new_realname
-              ? fail("name did not change")
-              : succeed([
-                  {
-                    type: "user_realname_changed",
-                    data: { user_id, new_realname },
-                  },
-                ])
-          )
-        : fail("auth required"),
+    handler: ({ new_realname, user_id }, meta) => {
+      if (!meta.user_id) return fail("auth_required");
+      user_id = user_id ?? meta.user_id;
+      return check_profile_edit_capability(user_id, meta, () =>
+        fetch("user", user_id, ({ realname }) =>
+          realname === new_realname
+            ? fail("name did not change")
+            : succeed([
+                {
+                  type: "user_realname_changed",
+                  data: { user_id, new_realname },
+                },
+              ])
+        )
+      );
+    },
   }),
   ping: Command({
     handler: ({}) => succeed([{ type: "ping", data: {} }]),
