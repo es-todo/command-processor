@@ -156,10 +156,6 @@ function check_profile_edit_capability(
   return check_role(meta, "profile-management", f);
 }
 
-function assert_string(x: any): asserts x is string {
-  if (typeof x !== "string") throw new Error("not a string");
-}
-
 const command_rules: command_rules = {
   register: Command({
     handler: ({ user_id, email, password, username, realname }) =>
@@ -244,6 +240,12 @@ const command_rules: command_rules = {
       );
     },
   }),
+  request_password_reset_code: Command({
+    handler: () => fail("not yet"),
+  }),
+  reset_password_with_code: Command({
+    handler: () => fail("not yet"),
+  }),
   receive_email_confirmation_code: Command({
     handler: ({ code }) =>
       fetch("email_confirmation_code", code, ({ received }) =>
@@ -257,15 +259,18 @@ const command_rules: command_rules = {
   dequeue_email_message: Command({
     handler: ({ message_id, status }, meta) =>
       check_role(meta, "automation", () =>
-        fetch("email_message", message_id, ({ status: existing_status }) =>
-          existing_status.type === "queued"
-            ? succeed([
-                {
-                  type: "email_message_dequeued",
-                  data: { message_id, status },
-                },
-              ])
-            : fail(`already_${existing_status.type}`)
+        fetch(
+          "email_message_delivery_status",
+          message_id,
+          ({ status: existing_status }) =>
+            existing_status.type === "queued"
+              ? succeed([
+                  {
+                    type: "email_message_dequeued",
+                    data: { message_id, status },
+                  },
+                ])
+              : fail(`already_${existing_status.type}`)
         )
       ),
   }),
