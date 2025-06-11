@@ -241,10 +241,50 @@ const command_rules: command_rules = {
     },
   }),
   request_password_reset_code: Command({
-    handler: () => fail("not yet"),
+    handler: ({ email_or_username, message_id }) => {
+      function step2({ user_id }: { user_id: string }) {
+        const code = nanoid();
+        return fetch("user", user_id, ({ email }) =>
+          succeed([
+            { type: "password_reset_code_generated", data: { user_id, code } },
+            {
+              type: "email_message_enqueued",
+              data: {
+                user_id,
+                message_id,
+                email,
+                content: { type: "reset_password_email", code },
+              },
+            },
+          ])
+        );
+      }
+      return fetch(
+        "email_message",
+        message_id,
+        () => fail("message_id_already_used"),
+        () =>
+          fetch("email", email_or_username, step2, () =>
+            fetch("username_redirect", email_or_username, step2, () =>
+              fail("not_found")
+            )
+          )
+      );
+    },
   }),
   reset_password_with_code: Command({
-    handler: () => fail("not yet"),
+    handler: ({ code, new_password }) =>
+      fetch("password_reset_code", code, ({ user_id, used }) =>
+        used
+          ? fail("reset_code_already_used")
+          : succeed([
+              { type: "password_reset_code_used", data: { code } },
+              {
+                type: "user_password_changed",
+                data: { user_id, password: new_password },
+              },
+            ])
+      ),
   }),
   receive_email_confirmation_code: Command({
     handler: ({ code }) =>
