@@ -156,6 +156,14 @@ function check_profile_edit_capability(
   return check_role(meta, "profile-management", f);
 }
 
+function check_does_not_exist(
+  type: object_type["type"],
+  id: string,
+  f: () => command_outcome
+): command_outcome {
+  return fetch(type, id, () => fail(`${type}_is_already_used`), f);
+}
+
 const command_rules: command_rules = {
   register: Command({
     handler: ({ user_id, email, password, username, realname }) =>
@@ -314,7 +322,74 @@ const command_rules: command_rules = {
         )
       ),
   }),
-  change_email: Command({ handler: () => fail("not implemented") }),
+  change_email: Command({
+    handler: (
+      { user_id, new_email, old_email_message_id, new_email_message_id },
+      meta
+    ) => {
+      if (!meta.user_id) return fail("auth_required");
+      user_id = user_id ?? meta.user_id;
+      const code = nanoid();
+      return check_profile_edit_capability(
+        user_id,
+        meta,
+        () =>
+          email_error(new_email) ||
+          fetch(
+            "email",
+            new_email,
+            (email) =>
+              email.user_id === user_id
+                ? fail("email_did_not_change")
+                : fail("email_taken"),
+            () =>
+              check_does_not_exist("email_message", old_email_message_id, () =>
+                check_does_not_exist(
+                  "email_message",
+                  new_email_message_id,
+                  () =>
+                    fetch("user", user_id, ({ email: old_email }) =>
+                      succeed([
+                        {
+                          type: "user_email_changed",
+                          data: { user_id, new_email },
+                        },
+                        {
+                          type: "email_confirmation_code_generated",
+                          data: { code, email: new_email, user_id },
+                        },
+                        {
+                          type: "email_message_enqueued",
+                          data: {
+                            email: old_email,
+                            message_id: old_email_message_id,
+                            user_id,
+                            content: {
+                              type: "account_email_changed_email",
+                              new_email,
+                            },
+                          },
+                        },
+                        {
+                          type: "email_message_enqueued",
+                          data: {
+                            email: new_email,
+                            message_id: new_email_message_id,
+                            user_id,
+                            content: {
+                              type: "confirm_email_email",
+                              code,
+                            },
+                          },
+                        },
+                      ])
+                    )
+                )
+              )
+          )
+      );
+    },
+  }),
   change_username: Command({
     handler: ({ new_username, user_id }, meta) => {
       if (!meta.user_id) return fail("auth_required");
@@ -327,7 +402,7 @@ const command_rules: command_rules = {
           fetch(
             "username",
             new_username,
-            () => fail("username taken"),
+            () => fail("username_taken"),
             () =>
               fetch("user", user_id, ({ username }) =>
                 username === new_username
