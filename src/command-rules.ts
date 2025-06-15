@@ -436,6 +436,22 @@ const command_rules: command_rules = {
       );
     },
   }),
+  update_user_profile_photo: Command({
+    handler: ({ user_id, photo }, meta) => {
+      if (!meta.user_id) return fail("auth_required");
+      user_id = user_id ?? meta.user_id;
+      return check_profile_edit_capability(user_id, meta, () =>
+        fetch("user", user_id, ({}) =>
+          succeed([
+            {
+              type: "user_profile_photo_updated",
+              data: { user_id, photo },
+            },
+          ])
+        )
+      );
+    },
+  }),
   ping: Command({
     handler: ({}) => succeed([{ type: "ping", data: {} }]),
   }),
