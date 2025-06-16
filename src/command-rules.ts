@@ -100,34 +100,60 @@ function check_role(
 function welcome_email_events({
   user_id,
   email,
+  password_set,
 }: {
   user_id: string;
   email: string;
+  password_set: boolean;
 }): event_type[] {
   const code = nanoid(16);
   const message_id = uuidv4();
-  return [
-    {
-      type: "email_confirmation_code_generated",
-      data: {
-        user_id,
-        email,
-        code,
-      },
-    },
-    {
-      type: "email_message_enqueued",
-      data: {
-        user_id,
-        email,
-        message_id,
-        content: {
-          type: "welcome_email",
+  if (password_set) {
+    return [
+      {
+        type: "email_confirmation_code_generated",
+        data: {
+          user_id,
+          email,
           code,
         },
       },
-    },
-  ];
+      {
+        type: "email_message_enqueued",
+        data: {
+          user_id,
+          email,
+          message_id,
+          content: {
+            type: "welcome_email",
+            code,
+          },
+        },
+      },
+    ];
+  } else {
+    return [
+      {
+        type: "password_reset_code_generated",
+        data: {
+          user_id,
+          code,
+        },
+      },
+      {
+        type: "email_message_enqueued",
+        data: {
+          user_id,
+          email,
+          message_id,
+          content: {
+            type: "manual_onboarding_email",
+            code,
+          },
+        },
+      },
+    ];
+  }
 }
 
 function email_error(email: string): command_outcome | undefined {
@@ -166,7 +192,7 @@ function check_does_not_exist(
 
 const command_rules: command_rules = {
   register: Command({
-    handler: ({ user_id, email, password, username, realname }) =>
+    handler: ({ user_id, email, password, username, realname }, meta) =>
       username_error(username) ||
       email_error(email) ||
       fetch(
@@ -187,21 +213,33 @@ const command_rules: command_rules = {
                   fetch(
                     "role_users",
                     "admin",
-                    (_existingdata) =>
+                    (_existingdata) => {
                       // normal registration workflow
-                      succeed([
-                        {
-                          type: "user_registered",
-                          data: {
-                            user_id,
-                            username,
-                            realname,
-                            email,
-                            password,
+                      const password_set = typeof password === "string";
+                      const success = () =>
+                        succeed([
+                          {
+                            type: "user_registered",
+                            data: {
+                              user_id,
+                              username,
+                              realname,
+                              email,
+                              password,
+                            },
                           },
-                        },
-                        ...welcome_email_events({ user_id, email }),
-                      ]),
+                          ...welcome_email_events({
+                            user_id,
+                            email,
+                            password_set,
+                          }),
+                        ]);
+                      if (password_set) {
+                        return success();
+                      } else {
+                        return check_role(meta, "profile-management", success);
+                      }
+                    },
                     () =>
                       // admin registration workflow
                       succeed([
