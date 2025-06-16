@@ -392,6 +392,7 @@ const command_rules: command_rules = {
   }),
   change_username: Command({
     handler: ({ new_username, user_id }, meta) => {
+      const message_id = uuidv4();
       if (!meta.user_id) return fail("auth_required");
       user_id = user_id ?? meta.user_id;
       return check_profile_edit_capability(
@@ -404,13 +405,25 @@ const command_rules: command_rules = {
             new_username,
             () => fail("username_taken"),
             () =>
-              fetch("user", user_id, ({ username }) =>
-                username === new_username
+              fetch("user", user_id, ({ username: old_username, email }) =>
+                old_username === new_username
                   ? fail("username did not change")
                   : succeed([
                       {
                         type: "user_username_changed",
                         data: { user_id, new_username },
+                      },
+                      {
+                        type: "email_message_enqueued",
+                        data: {
+                          email,
+                          message_id,
+                          user_id,
+                          content: {
+                            type: "username_changed_email",
+                            old_username,
+                          },
+                        },
                       },
                     ])
               )
